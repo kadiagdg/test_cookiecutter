@@ -1,1 +1,183 @@
 
+import pandas as pd
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import classification_report, roc_curve, auc
+import matplotlib.pyplot as plt
+
+# Identification des colonnes catégorielles
+categorical_features = X_train.select_dtypes(include=['object', 'category']).columns
+
+# Pipeline de prétraitement : OneHotEncoder pour les colonnes catégorielles
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('cat', OneHotEncoder(), categorical_features)],
+    remainder='passthrough')  # Laisse les colonnes numériques intactes
+
+# 1. Pipeline pour Régression logistique
+log_model = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', LogisticRegression(max_iter=1000))
+])
+
+log_model.fit(X_train, y_train)
+log_pred = log_model.predict(X_test)
+
+# 2. Pipeline pour Random Forest
+rf_model = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', RandomForestClassifier(random_state=42))
+])
+
+rf_model.fit(X_train, y_train)
+rf_pred = rf_model.predict(X_test)
+
+# 3. Pipeline pour XGBoost
+xgb_model = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss'))
+])
+
+xgb_model.fit(X_train, y_train)
+xgb_pred = xgb_model.predict(X_test)
+
+# Évaluation des modèles
+print("Logistic Regression")
+print(classification_report(y_test, log_pred))
+
+print("Random Forest")
+print(classification_report(y_test, rf_pred))
+
+print("XGBoost")
+print(classification_report(y_test, xgb_pred))
+
+# Courbes ROC et AUC
+plt.figure(figsize=(10, 8))
+
+for model, label in zip([log_model, rf_model, xgb_model],
+                        ['Logistic Regression', 'Random Forest', 'XGBoost']):
+    preds = model.predict_proba(X_test)[:, 1]
+    fpr, tpr, _ = roc_curve(y_test, preds)
+    roc_auc = auc(fpr, tpr)
+    plt.plot(fpr, tpr, label=f'{label} (AUC = {roc_auc:.2f})')
+
+plt.plot([0, 1], [0, 1], 'k--', label='Random Guessing')
+plt.xlabel('Taux de Faux Positifs')
+plt.ylabel('Taux de Vrais Positifs')
+plt.title('Courbes ROC des Modèles')
+plt.legend()
+plt.grid()
+plt.show()
+__________________>>>>>
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import classification_report
+
+# Identification des colonnes catégorielles
+categorical_features = X_train.select_dtypes(include=['object', 'category']).columns
+
+# Pipeline de prétraitement
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('cat', OneHotEncoder(), categorical_features)],
+    remainder='passthrough')
+
+# 1. Optimisation des hyperparamètres pour la Régression Logistique
+log_reg_param_grid = {
+    'classifier__C': [0.01, 0.1, 1, 10, 100],
+    'classifier__solver': ['liblinear', 'lbfgs', 'newton-cg'],
+    'classifier__max_iter': [100, 200, 300]
+}
+
+log_reg_pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', LogisticRegression())
+])
+
+# RandomizedSearchCV pour la Régression Logistique
+log_reg_random_search = RandomizedSearchCV(estimator=log_reg_pipeline, 
+                                           param_distributions=log_reg_param_grid, 
+                                           n_iter=100, cv=3, 
+                                           verbose=2, random_state=42, n_jobs=-1)
+log_reg_random_search.fit(X_train, y_train)
+
+# Meilleurs paramètres trouvés pour la Régression Logistique
+print("Best Logistic Regression Params: ", log_reg_random_search.best_params_)
+
+# Prédictions avec les meilleurs paramètres
+best_log_reg_model = log_reg_random_search.best_estimator_
+best_log_reg_pred = best_log_reg_model.predict(X_test)
+print("Logistic Regression with Best Params")
+print(classification_report(y_test, best_log_reg_pred))
+
+# 2. Optimisation des hyperparamètres pour Random Forest
+rf_param_grid = {
+    'classifier__n_estimators': [100, 200, 300],
+    'classifier__max_depth': [10, 20, 30, None],
+    'classifier__min_samples_split': [2, 5, 10],
+    'classifier__min_samples_leaf': [1, 2, 4],
+    'classifier__bootstrap': [True, False]
+}
+
+rf_pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', RandomForestClassifier(random_state=42))
+])
+
+# RandomizedSearchCV pour Random Forest
+rf_random_search = RandomizedSearchCV(estimator=rf_pipeline, 
+                                      param_distributions=rf_param_grid, 
+                                      n_iter=100, cv=3, 
+                                      verbose=2, random_state=42, n_jobs=-1)
+rf_random_search.fit(X_train, y_train)
+
+# Meilleurs paramètres trouvés pour Random Forest
+print("Best Random Forest Params: ", rf_random_search.best_params_)
+
+# Prédictions avec les meilleurs paramètres
+best_rf_model = rf_random_search.best_estimator_
+best_rf_pred = best_rf_model.predict(X_test)
+print("Random Forest with Best Params")
+print(classification_report(y_test, best_rf_pred))
+
+# 3. Optimisation des hyperparamètres pour XGBoost
+xgb_param_grid = {
+    'classifier__n_estimators': [100, 200, 300],
+    'classifier__learning_rate': [0.01, 0.1, 0.2],
+    'classifier__max_depth': [3, 5, 7],
+    'classifier__subsample': [0.8, 1.0],
+    'classifier__colsample_bytree': [0.8, 1.0],
+    'classifier__gamma': [0, 1, 5]
+}
+
+xgb_pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss'))
+])
+
+# RandomizedSearchCV pour XGBoost
+xgb_random_search = RandomizedSearchCV(estimator=xgb_pipeline, 
+                                       param_distributions=xgb_param_grid, 
+                                       n_iter=100, cv=3, 
+                                       verbose=2, random_state=42, n_jobs=-1)
+xgb_random_search.fit(X_train, y_train)
+
+# Meilleurs paramètres trouvés pour XGBoost
+print("Best XGBoost Params: ", xgb_random_search.best_params_)
+
+# Prédictions avec les meilleurs paramètres
+best_xgb_model = xgb_random_search.best_estimator_
+best_xgb_pred = best_xgb_model.predict(X_test)
+print("XGBoost with Best Params")
+print(classification_report(y_test, best_xgb_pred))
+
+
